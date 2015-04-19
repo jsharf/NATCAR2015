@@ -47,34 +47,40 @@ void ADCSeq3Handler()
 
 	intcounter++;
 
-	uint32_t mode = uDMAChannelModeGet(UDMA_CHANNEL_ADC3 | UDMA_PRI_SELECT);
 
-	if (!camera_DBSelected && mode == UDMA_MODE_STOP)
-	{
-		camera_DBSelected = 1;
-		uDMAChannelTransferSet(UDMA_CHANNEL_ADC3 | UDMA_ALT_SELECT,
-				UDMA_MODE_PINGPONG, (void*) (ADC0_BASE + ADC_O_SSFIFO3),
-				camera_DoubleBuffer[camera_DBSelected], CAMERA_SAMPLES);
-		intcounter = 0;
-	}
-
-	mode = uDMAChannelModeGet(UDMA_CHANNEL_ADC3 | UDMA_ALT_SELECT);
-
-	if (camera_DBSelected && mode == UDMA_MODE_STOP)
-	{
-		camera_DBSelected = 0;
-		uDMAChannelTransferSet(UDMA_CHANNEL_ADC3 | UDMA_PRI_SELECT,
-				UDMA_MODE_PINGPONG, (void*) (ADC0_BASE + ADC_O_SSFIFO3),
-				camera_DoubleBuffer[camera_DBSelected], CAMERA_SAMPLES);
-		intcounter = 0;
-	}
 
 
 }
 
+void PWMGen1Handler()
+{
+	PWMGenIntClear(PWM0_BASE, PWM_GEN_1, PWM_INT_CNT_LOAD);
+
+	//uint32_t mode = uDMAChannelModeGet(UDMA_CHANNEL_ADC3 | UDMA_PRI_SELECT);
+
+	if (!camera_DBSelected)// && mode == UDMA_MODE_STOP)
+	{
+		camera_DBSelected = 1;
+		uDMAChannelTransferSet(UDMA_CHANNEL_ADC3 | UDMA_ALT_SELECT,
+		UDMA_MODE_PINGPONG, (void*) (ADC0_BASE + ADC_O_SSFIFO3),
+				camera_DoubleBuffer[camera_DBSelected], CAMERA_SAMPLES);
+		intcounter = 0;
+	}
+
+	//mode = uDMAChannelModeGet(UDMA_CHANNEL_ADC3 | UDMA_ALT_SELECT);
+
+	if (camera_DBSelected)// && mode == UDMA_MODE_STOP)
+	{
+		camera_DBSelected = 0;
+		uDMAChannelTransferSet(UDMA_CHANNEL_ADC3 | UDMA_PRI_SELECT,
+		UDMA_MODE_PINGPONG, (void*) (ADC0_BASE + ADC_O_SSFIFO3),
+				camera_DoubleBuffer[camera_DBSelected], CAMERA_SAMPLES);
+		intcounter = 0;
+	}
+}
+
 void camera_init()
 {
-	testval = 0x5A5A5A5A;
 	intcounter = 0;
 	int i, j;
 	for(i = 0; i < 2; i++)
@@ -118,6 +124,9 @@ void camera_init()
 
 	// Enable PWM trigger on zero count on Generator 0
 	PWMGenIntTrigEnable(PWM0_BASE, PWM_GEN_0, PWM_TR_CNT_ZERO); // PWM_TR_CNT_ZERO/PWM_TR_CNT_LOAD
+
+	// Trigger an interrupt on GEN1 load (to setup the uDMA transfer on a consistent time boundary)
+	PWMGenIntTrigEnable(PWM0_BASE, PWM_GEN_1, PWM_INT_CNT_LOAD);
 
 	/********************************************
 	 * 			  ADC CONFIGURATION				*
@@ -164,15 +173,21 @@ void camera_init()
 	uDMAChannelControlSet(UDMA_CHANNEL_ADC3 | UDMA_PRI_SELECT, UDMA_SIZE_16 | UDMA_SRC_INC_NONE | UDMA_DST_INC_16 | UDMA_ARB_1);
 	uDMAChannelControlSet(UDMA_CHANNEL_ADC3 | UDMA_ALT_SELECT, UDMA_SIZE_16 | UDMA_SRC_INC_NONE | UDMA_DST_INC_16 | UDMA_ARB_1);
 
-	uDMAChannelTransferSet(UDMA_CHANNEL_ADC3 | UDMA_PRI_SELECT, UDMA_MODE_PINGPONG, &testval, camera_DoubleBuffer[0], CAMERA_SAMPLES);
-	uDMAChannelTransferSet(UDMA_CHANNEL_ADC3 | UDMA_ALT_SELECT, UDMA_MODE_PINGPONG, &testval, camera_DoubleBuffer[1], CAMERA_SAMPLES);
+	uDMAChannelTransferSet(UDMA_CHANNEL_ADC3 | UDMA_PRI_SELECT, UDMA_MODE_PINGPONG, (void*) (ADC0_BASE + ADC_O_SSFIFO3), camera_DoubleBuffer[0], CAMERA_SAMPLES);
+	uDMAChannelTransferSet(UDMA_CHANNEL_ADC3 | UDMA_ALT_SELECT, UDMA_MODE_PINGPONG, (void*) (ADC0_BASE + ADC_O_SSFIFO3), camera_DoubleBuffer[1], CAMERA_SAMPLES);
 
+	uDMAChannelEnable(UDMA_CHANNEL_ADC3);
+
+	// Enable interrupts
 	IntEnable(INT_ADC0SS3);
 	ADCIntEnableEx(ADC0_BASE, ADC_INT_DMA_SS3);
 
+	IntEnable(INT_PWM0_1);
+	PWMIntEnable(PWM0_BASE, PWM_INT_GEN_1);
 
 
-	uDMAChannelEnable(UDMA_CHANNEL_ADC3);
+
+
 }
 
 
