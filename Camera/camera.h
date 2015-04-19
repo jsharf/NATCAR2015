@@ -8,9 +8,13 @@
 #ifndef CAMERA_H_
 #define CAMERA_H_
 
+#include <stdint.h>
+
 void camera_init();
 
 typedef uint16_t camera_sample_t;
+
+extern camera_sample_t* camera_buffer;
 
 // Callback type:
 // arg0 -> sample buffer
