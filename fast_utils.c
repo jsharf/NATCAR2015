@@ -330,6 +330,53 @@ double fast_sntod(const char* str, size_t sz, unsigned int base, bool* succ)
 	return ret;
 }
 
+#define SNFTMTF_FPARTDIGITS (4)
+
+int fast_snfmtf(char* buf, size_t bufsiz, float f, unsigned long base)
+{
+	if (bufsiz == 0 || base > MAX_BASE)
+		return 0;
+
+	if (f == 0.0f)
+	{
+		if (bufsiz >= 4)
+		{
+			fast_memcpy(buf, "0.0f", 4);
+			return 1;
+		}
+		else
+		{
+			buf[0] = 0;
+			return 0;
+		}
+	}
+
+	uint32_t bufindex = 0;
+	if(f < 0)
+	{
+		f = -f;
+		buf[0] = '-';
+		bufindex++;
+	}
+
+	int i;
+	long fpartmul = 1;
+	for(i = 0; i < SNFTMTF_FPARTDIGITS; i++)
+		fpartmul *= base;
+
+	long wholepart = (long)f;
+	long fpart = (long)((f - wholepart) * fpartmul);
+
+	bufindex += fast_snfmtui(&buf[bufindex], bufsiz - bufindex, wholepart, 10);
+	if(bufindex != bufsiz)
+	{
+		buf[bufindex++] = '.';
+	}
+	bufindex += fast_snfmtui(&buf[bufindex], bufsiz - bufindex, fpart, 10);
+
+	return bufindex;
+}
+
 unsigned long fast_nextmulof(unsigned long val, unsigned long q)
 {
 	// base cases
@@ -467,6 +514,12 @@ void fast_snprintf(char* buf, size_t bufsiz, const char* fmt, ...)
 				sym_unsigned = true;
 				fmtpos++;
 				goto _match_fchar;
+			case 'f':
+			{
+				float argval;
+				argval = (float)va_arg(ap, double);
+				bufpos += fast_snfmtf(&buf[bufpos], bufsiz-bufpos, argval, 10);
+			}
 			case 'd':
 			case 'x':
 			{

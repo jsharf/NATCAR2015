@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 #ifndef NULL
 #define NULL ((void*)0)
@@ -10,9 +11,9 @@
 
 #define ATOMIC
 
-#ifndef size_t
-typedef uint32_t size_t;
-#endif
+//#ifndef size_t
+//typedef uint32_t size_t;
+//#endif
 
 #define __ALLOC_MEM_SIZE (4096)
 

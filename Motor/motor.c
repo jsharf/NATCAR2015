@@ -51,6 +51,11 @@ bool motor_braking;
 #define SERVO_MIN_BAND_NS (1000ul)
 #define SERVO_MID_BAND_NS ((SERVO_MAX_BAND_NS + SERVO_MIN_BAND_NS)/2)
 
+#define SERVO_OVERRIDE_BOUNDS
+
+#define SERVO_OVERRIDE_SMAXB (2400)
+#define SERVO_OVERRIDE_SMINB (1000)
+
 uint32_t
 	servo_period,
 	servo_highband,
@@ -88,12 +93,14 @@ void motor_init()
 	PWMGenPeriodSet(PWM1_BASE, PWM_GEN_0, motor_period);
 
 	// Calculate and set the motor highband
-	motor_highband = 0;
+	motor_highband = 1;
 	PWMPulseWidthSet(PWM1_BASE, PWM_OUT_0, motor_highband);
 
 	// Enable the PWM output
 	PWMOutputState(PWM1_BASE, PWM_OUT_0_BIT, true);
 	PWMGenEnable(PWM1_BASE, PWM_GEN_0);
+
+	motor_setSpeedi(0);
 
 	// Chain initializer for servo
 	servo_init();
@@ -113,11 +120,17 @@ void servo_init()
 	PWMGenConfigure(PWM1_BASE, PWM_GEN_1, PWM_GEN_MODE_DOWN);
 	PWMGenPeriodSet(PWM1_BASE, PWM_GEN_1, servo_period);
 
+#ifndef SERVO_OVERRIDE_BOUNDS
 	// Calculate and set the servo highband
 	servo_max_highband = ((motor_PWMClockFreq / SERVO_PWM_FREQ)
 			* (SERVO_MAX_BAND_NS / 10ul)) / (SERVO_PERIOD_NS / 10ul);
 	servo_min_highband = ((motor_PWMClockFreq / SERVO_PWM_FREQ)
 			* (SERVO_MIN_BAND_NS / 10ul)) / (SERVO_PERIOD_NS / 10ul);
+
+#else
+	servo_max_highband = SERVO_OVERRIDE_SMAXB;
+	servo_min_highband = SERVO_OVERRIDE_SMINB;
+#endif
 
 	servo_highband = (servo_max_highband + servo_min_highband)/2;
 
@@ -135,19 +148,25 @@ void motor_setSpeedi(uint32_t speed)
 		motor_releaseBrake();
 	}
 
+	if(speed == 0 && motor_highband != 0)
+	{
+		motor_highband = 0;
+		PWMOutputState(PWM1_BASE, PWM_OUT_0_BIT, false);
+		return;
+	}
+
+	if(motor_highband == 0)
+	{
+		PWMOutputState(PWM1_BASE, PWM_OUT_0_BIT, true);
+	}
+
 	motor_highband = clamp(speed, 1, motor_period - 1);
 	PWMPulseWidthSet(PWM1_BASE, PWM_OUT_0, motor_highband);
 }
 
 void motor_setSpeedf(float speed)
 {
-	if (motor_braking)
-	{
-		motor_releaseBrake();
-	}
-
-	motor_highband = clamp((uint32_t )(motor_period * speed), 1, motor_period - 1);
-	PWMPulseWidthSet(PWM1_BASE, PWM_OUT_0, motor_highband);
+	motor_setSpeedi(clamp((uint32_t )(motor_period * speed), 1, motor_period - 1));
 }
 
 uint32_t motor_getMaxSpeed()

@@ -36,6 +36,8 @@ static void NmiSR(void);
 static void FaultISR(void);
 static void IntDefaultHandler(void);
 
+volatile uint32_t _sbrk;
+
 #ifndef HWREG
 #define HWREG(x) (*((volatile uint32_t *)(x)))
 #endif

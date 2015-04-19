@@ -10,6 +10,10 @@
 
 #include <stdint.h>
 
+extern uint32_t
+	servo_max_highband,
+	servo_min_highband;
+
 void motor_init();
 void motor_setSpeedi(uint32_t speed);
 void motor_setSpeedf(float speed);
