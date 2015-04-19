@@ -22,136 +22,128 @@
 
 #include "fast_utils.h"
 
-//#define PERIOD (4096)
-//
-//volatile uint32_t deadband;
-//
-//int main(void)
-//{
-//	deadband = PERIOD;
-////	SysCtlClockSet(
-////	SYSCTL_SYSDIV_2_5 |
-////	SYSCTL_USE_PLL |
-////	SYSCTL_XTAL_16MHZ |
-////	SYSCTL_OSC_MAIN);
-//
-//	SysCtlClockSet(SYSCTL_SYSDIV_4 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN | SYSCTL_XTAL_16MHZ);
-//
-//	PWM
-//
-//	SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
-//	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
-//
-//	    GPIOPinConfigure(GPIO_PA0_U0RX);
-//	    GPIOPinConfigure(GPIO_PA1_U0TX);
-//	    GPIOPinTypeUART(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);
-//
-//	    UARTConfigSetExpClk(UART0_BASE, SysCtlClockGet(), 9600,
-//	        (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));
-//
-//	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
-//	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
-//
-//	// Enable PE2 as an output
-//	GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, 1 << 2);
-//
-//	// Enable PF0 and PF4 as inputs
-//	GPIOPinTypeGPIOInput(GPIO_PORTF_BASE, (1 << 4) | (1 << 0));
-//	GPIOPadConfigSet(GPIO_PORTF_BASE, (1 << 4) | (1 << 0), GPIO_STRENGTH_8MA,
-//			GPIO_PIN_TYPE_STD_WPU);
-//
-//	while (1)
-//	{
-//
-//		if (PERIOD - deadband)
-//		{
-//			GPIOPinWrite(GPIO_PORTE_BASE, 1 << 2, 1 << 2);
-//			SysCtlDelay(PERIOD - deadband);
-//		}
-//
-//		if (deadband)
-//		{
-//			GPIOPinWrite(GPIO_PORTE_BASE, 1 << 2, 0);
-//			SysCtlDelay(deadband);
-//		}
-//
-//		uint8_t portfstate = GPIOPinRead(GPIO_PORTF_BASE, (1 << 4) | (1 << 0));
-//		if ((~portfstate) & (1 << 4))
-//		{
-//			if (deadband < PERIOD)
-//				deadband++;
-//			else
-//				deadband = 0;
-//		}
-//		if (portfstate & (1 << 0))
-//		{
-//			if (deadband)
-//				deadband--;
-//			else
-//				deadband = PERIOD;
-//		}
-//	}
-//
-//	return 0;
-//}
+#include "Motor/motor.h"
+#include "Camera/camera.h"
 
-#define PWM_FREQUENCY 1000
+#include "debug_serial.h"
+
+float speed;
+
+const char darkness_charset[] = " .,:;!?#############";
+
+const char b64str[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/+";
+
+inline uint32_t map_val(uint32_t val, uint32_t inmin, uint32_t inmax, uint32_t outmin, uint32_t outmax)
+{
+	uint32_t retval = ((val - inmin)*(outmax - outmin));
+	uint32_t divisor = (inmax - inmin);
+	if(divisor != 0)
+		return retval / divisor;
+	return 0;
+}
+
+long abs(long a)
+{
+	if(a < 0)
+		return -a;
+	return a;
+}
+
+camera_sample_t derivative_buffer[128];
 
 int main(void)
 {
-	volatile uint32_t ui32Load;
-	volatile uint32_t ui32PWMClock;
-	volatile uint32_t ui32Adjust;
-	ui32Adjust = 0;
+	speed = 0.0f;
 
 	SysCtlClockSet(SYSCTL_SYSDIV_5|SYSCTL_USE_PLL|SYSCTL_OSC_MAIN|SYSCTL_XTAL_16MHZ);
-	SysCtlPWMClockSet(SYSCTL_PWMDIV_32);
 
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_PWM1);
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
-
-	GPIOPinTypePWM(GPIO_PORTD_BASE, GPIO_PIN_0);
-	GPIOPinConfigure(GPIO_PD0_M1PWM0);
 
 	HWREG(GPIO_PORTF_BASE + GPIO_O_LOCK) = GPIO_LOCK_KEY;
 	HWREG(GPIO_PORTF_BASE + GPIO_O_CR) |= 0x01;
 	HWREG(GPIO_PORTF_BASE + GPIO_O_LOCK) = 0;
+
 	GPIODirModeSet(GPIO_PORTF_BASE, GPIO_PIN_4|GPIO_PIN_0, GPIO_DIR_MODE_IN);
 	GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_4|GPIO_PIN_0, GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD_WPU);
 
-	ui32PWMClock = SysCtlClockGet() / 32;
-	ui32Load = (ui32PWMClock / PWM_FREQUENCY) - 1;
-	PWMGenConfigure(PWM1_BASE, PWM_GEN_0, PWM_GEN_MODE_DOWN);
-	PWMGenPeriodSet(PWM1_BASE, PWM_GEN_0, ui32Load);
+	Serial_init(UART_DEBUG_MODULE, 115200);
 
-	PWMPulseWidthSet(PWM1_BASE, PWM_OUT_0, ui32Adjust);
-	PWMOutputState(PWM1_BASE, PWM_OUT_0_BIT, true);
-	PWMGenEnable(PWM1_BASE, PWM_GEN_0);
+	Serial_puts(UART_DEBUG_MODULE, "Hello there!\r\n", 100);
 
-	while(1)
+	Serial_puts(UART_DEBUG_MODULE, "Initializing motor control...\r\n", 100);
+	motor_init();
+
+	Serial_puts(UART_DEBUG_MODULE, "Initializing camera...\r\n", 100);
+	camera_init();
+
+	Serial_puts(UART_DEBUG_MODULE, "Starting main control loop...\r\n", 100);
+
+	while (1)
 	{
+		uint8_t buttonsMask = GPIOPinRead(GPIO_PORTF_BASE,
+				GPIO_PIN_4 | GPIO_PIN_0) ^ (GPIO_PIN_4 | GPIO_PIN_0);
 
-		if(GPIOPinRead(GPIO_PORTF_BASE,GPIO_PIN_4)==0x00)
+		if ((buttonsMask & (GPIO_PIN_4 | GPIO_PIN_0))
+				== (GPIO_PIN_4 | GPIO_PIN_0))
 		{
+			motor_brake();
+			speed = 0.0f;
+		}
+		else if (buttonsMask & GPIO_PIN_4)
+		{
+			if (speed < 1.0f)
+				speed += 0.001f;
 
-			if (ui32Adjust > 1)
-			{
-				ui32Adjust--;
-			}
-			PWMPulseWidthSet(PWM1_BASE, PWM_OUT_0, ui32Adjust);
+			servo_setPosf(speed);
+			motor_setSpeedf(speed);
+		}
+		else if (buttonsMask & GPIO_PIN_0)
+		{
+			if (speed > 0.0f)
+				speed -= 0.001f;
+
+			servo_setPosf(speed);
+			motor_setSpeedf(speed);
 		}
 
-		if(GPIOPinRead(GPIO_PORTF_BASE,GPIO_PIN_0)==0x00)
+		int i;
+		camera_sample_t minval, maxval;
+		minval = 1 << 13;
+		maxval = 0;
+		for (i = 0; i < 128; i++)
 		{
-			if (ui32Adjust < ui32Load)
-			{
-				ui32Adjust++;
-			}
-			PWMPulseWidthSet(PWM1_BASE, PWM_OUT_0, ui32Adjust);
+			if (camera_buffer[i] > maxval)
+				maxval = camera_buffer[i];
+			if (camera_buffer[i] < minval)
+				minval = camera_buffer[i];
 		}
 
-		SysCtlDelay(100000);
+		for (i = 1; i < 128; i++)
+		{
+			derivative_buffer[i - 1] = abs(
+					((int16_t) camera_buffer[i])
+							- ((int16_t) camera_buffer[i - 1]));
+		}
+
+
+#ifdef DEBUG_B64_OUT
+		for (i = 0; i < 128; i++)
+		{
+			Serial_putc(UART_DEBUG_MODULE, b64str[(camera_buffer[i] >> 6) & 0x3F]);
+			Serial_putc(UART_DEBUG_MODULE, b64str[camera_buffer[i] & 0x3F]);
+		}
+		Serial_puts(UART_DEBUG_MODULE, "\r\n", 2);
+#endif
+
+#ifdef DEBUG_LINE_TO_CONSOLE
+		for (i = 1; i < 128; i++)
+		{
+			derivative_buffer[i - 1] = abs(((int16_t)camera_buffer[i]) - ((int16_t)camera_buffer[i - 1]));
+			Serial_putc(UART_DEBUG_MODULE, darkness_charset[derivative_buffer[i - 1] >> 9]);
+		}
+		Serial_puts(UART_DEBUG_MODULE, "\r\n", 2);
+#endif
+
 	}
 
 }

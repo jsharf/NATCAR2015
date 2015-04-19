@@ -10,6 +10,8 @@
 
 #include <stdint.h>
 
+#define CAMERA_SAMPLES (128)
+
 void camera_init();
 
 typedef uint16_t camera_sample_t;
