@@ -26,6 +26,21 @@ void shell_processLine(void);
 
 shell_progMapEntry_t shell_progMap[SHELL_MAX_PROGRAMS];
 
+int help_main(char* argv[], int argc)
+{
+	Serial_puts(UART_DEBUG_MODULE, "The following programs are available:\r\n", 100);
+	int i;
+	for(i = 0; i < SHELL_MAX_PROGRAMS; i++)
+	{
+		if(fast_strlen(shell_progMap[i].name))
+		{
+			Serial_puts(UART_DEBUG_MODULE, shell_progMap[i].name, 100);
+			Serial_puts(UART_DEBUG_MODULE, "\r\n", 2);
+		}
+	}
+	return 0;
+}
+
 void shell_initProgMap()
 {
     int i;
@@ -37,10 +52,12 @@ void shell_initProgMap()
 
 void shell_init()
 {
-	Serial_puts(UART_DEBUG_MODULE, "root@stellaris:>", 100);
+	Serial_puts(UART_DEBUG_MODULE, DEVICE_IDENTIFIER ":>", 100);
 	shell_lineBufferIndex = 0;
 
 	shell_initProgMap();
+
+	shell_registerProgram("help", help_main);
 }
 
 bool shell_registerProgram(const char* name, shell_func_t prog_main)
@@ -97,7 +114,7 @@ void shell_poll()
 
 			shell_processLine();
 
-			Serial_puts(UART_DEBUG_MODULE, "root@stellaris:>", 100);
+			Serial_puts(UART_DEBUG_MODULE, DEVICE_IDENTIFIER ":>", 100);
 			shell_lineBufferIndex = 0;
 			break;
 		}

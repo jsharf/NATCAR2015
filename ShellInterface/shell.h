@@ -12,6 +12,8 @@
 #include "../fast_utils.h"
 #include <stdbool.h>
 
+#define DEVICE_IDENTIFIER "DankWheels"
+
 #define SHELL_LINE_BUFFER_SIZE (128)
 
 #define SHELL_MAX_ARGS (8)
