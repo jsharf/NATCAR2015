@@ -32,13 +32,28 @@
 
 #include "ShellInterface/shell.h"
 
+#include "ShellInterface/prog_getset.h"
+
 #include "debug_serial.h"
+
+#include "Settings/defaults.h"
 
 float speed;
 
+// Coefficients
 float threshold_ratio;
+bool speed_control;
+float speed_multiplier;
+bool killswitch;
+static PIDController_t servopid;
+uint32_t edgeclip_count;
+float min_speed;
 
-const char darkness_charset[] = " .,:;!?#############";
+bool red_led, green_led, blue_led;
+
+bool be_still;
+
+const char darkness_charset[] = " .,:;!?#";
 
 const char b64str[] =
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/+";
@@ -53,142 +68,12 @@ inline uint32_t map_val(uint32_t val, uint32_t inmin, uint32_t inmax,
 	return 0;
 }
 
-//long abs(long a)
-//{
-//	if (a < 0)
-//		return -a;
-//	return a;
-//}
-
-static PIDController_t servopid;
-
-bool killswitch;
-
-
-
-int set_main(char* argv[], int argc)
-{
-	char printbuf[64];
-	if(argc != 3)
-	{
-		Serial_puts(UART_DEBUG_MODULE, "USAGE:\r\n\tset <VAR> <VAL>\r\n", 100);
-		return -1;
-	}
-
-	bool succ = false, succui = false;
-	float val = fast_sntof(argv[2], fast_strlen(argv[2]), 10, &succ);
-	uint32_t valui = fast_sntoul(argv[2], fast_strlen(argv[2]), 10, &succui);
-
-	if (succ)
-	{
-		if (fast_strcmp(argv[1], "P") == 0 || fast_strcmp(argv[1], "p") == 0)
-		{
-			servopid.coefficients.p = val;
-			fast_snprintf(printbuf, 64, "P=%d.%05d\r\n",
-					(long) servopid.coefficients.p,
-					(long) (100000
-							* (servopid.coefficients.p
-									- (long) servopid.coefficients.p)));
-		}
-		if (fast_strcmp(argv[1], "I") == 0 || fast_strcmp(argv[1], "i") == 0)
-		{
-			servopid.coefficients.i = val;
-			fast_snprintf(printbuf, 64, "I=%d.%05d\r\n",
-					(long) servopid.coefficients.i,
-					(long) (100000
-							* (servopid.coefficients.i
-									- (long) servopid.coefficients.i)));
-		}
-		if (fast_strcmp(argv[1], "D") == 0 || fast_strcmp(argv[1], "d") == 0)
-		{
-			servopid.coefficients.d = val;
-			fast_snprintf(printbuf, 64, "D=%d.%05d\r\n",
-					(long) servopid.coefficients.d,
-					(long) (100000
-							* (servopid.coefficients.d
-									- (long) servopid.coefficients.d)));
-		}
-		if (fast_strcmp(argv[1], "thresh") == 0)
-		{
-			threshold_ratio = val;
-			fast_snprintf(printbuf, 64, "D=%d.%05d\r\n",
-					(long) threshold_ratio,
-					(long) (100000
-							* (threshold_ratio
-									- (long) threshold_ratio)));
-		}
-	}
-
-	if(succui)
-	{
-		if (fast_strcmp(argv[1], "smaxb") == 0)
-		{
-			servo_max_highband = valui;
-			fast_snprintf(printbuf, 64, "servo_max_highband=%d\r\n", valui);
-		}
-		if (fast_strcmp(argv[1], "sminb") == 0)
-		{
-			servo_min_highband = valui;
-			fast_snprintf(printbuf, 64, "servo_min_highband=%d\r\n", valui);
-		}
-	}
-
-	if(!(succ || succui))
-	{
-		Serial_puts(UART_DEBUG_MODULE, "Invalid arguments!\r\n", 100);
-		return -1;
-	}
-
-	Serial_puts(UART_DEBUG_MODULE, printbuf, 64);
-	return 0;
-}
-
-int get_main(char* argv[], int argc)
-{
-	char printbuf[64] = "No arg specified!\r\n";
-	if(argc != 2)
-	{
-		Serial_puts(UART_DEBUG_MODULE, "USAGE:\r\n\tget <VAR>\r\n", 100);
-		return -1;
-	}
-
-	if(argc == 2)
-	{
-		if (fast_strcmp(argv[1], "P") == 0 || fast_strcmp(argv[1], "p") == 0)
-		{
-			fast_snprintf(printbuf, 64, "P=%d.%05d\r\n", (long)servopid.coefficients.p,(long)(100000*(servopid.coefficients.p - (long)servopid.coefficients.p)));
-		}
-		if (fast_strcmp(argv[1], "I") == 0 || fast_strcmp(argv[1], "i") == 0)
-		{
-			fast_snprintf(printbuf, 64, "I=%d.%05d\r\n", (long)servopid.coefficients.i,(long)(100000*(servopid.coefficients.i - (long)servopid.coefficients.i)));
-		}
-		if (fast_strcmp(argv[1], "D") == 0 || fast_strcmp(argv[1], "d") == 0)
-		{
-			fast_snprintf(printbuf, 64, "D=%d.%05d\r\n", (long)servopid.coefficients.d,(long)(100000*(servopid.coefficients.d - (long)servopid.coefficients.d)));
-		}
-		if (fast_strcmp(argv[1], "thresh") == 0)
-		{
-			fast_snprintf(printbuf, 64, "threshold_ratio=%d.%05d\r\n", (long)threshold_ratio,(long)(100000*(threshold_ratio - (long)threshold_ratio)));
-		}
-		if (fast_strcmp(argv[1], "smaxb") == 0)
-		{
-			fast_snprintf(printbuf, 64, "servo_max_highband=%d\r\n",
-					servo_max_highband);
-		}
-		if (fast_strcmp(argv[1], "sminb") == 0)
-		{
-			fast_snprintf(printbuf, 64, "servo_min_highband=%d\r\n",
-					servo_min_highband);
-		}
-		Serial_puts(UART_DEBUG_MODULE, printbuf, 64);
-	}
-
-	return 0;
-}
+set_entry_t set_entries[MAX_SET_ENTRIES];
 
 int kill_main(char* argv[], int argc)
 {
 	killswitch = true;
+	speed_control = false;
 	motor_setSpeedf(0.0f);
 	motor_brake();
 
@@ -237,10 +122,24 @@ camera_sample_t derivative_buffer[128];
 
 #define THRESHOLD_RATIO (0.65f)
 
+
+
+//#define DEBUG_B64_OUT
+//#define REMOTE_CONTROL
+
 int main(void)
 {
-	threshold_ratio = THRESHOLD_RATIO;
+	speed_control = DEFAULT_SPEED_CONT;
+	speed_multiplier = DEFAULT_SPEED_MULT;
+	threshold_ratio = DEFAULT_THRESHOLD;
+	PID_PIDController(&servopid, DEFAULT_STEER_P, DEFAULT_STEER_I, DEFAULT_STEER_D, 2.0f);
+	edgeclip_count = DEFAULT_EDGECLIP_COUNT;
+	be_still = DEFAULT_BE_STILL;
+	min_speed = DEFAULT_MIN_SPEED;
 	killswitch = false;
+	red_led = false;
+	green_led = false;
+	blue_led = false;
 	speed = 0.0f;
 
 	SysCtlClockSet(
@@ -257,6 +156,9 @@ int main(void)
 	GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_4 | GPIO_PIN_0,
 			GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD_WPU);
 
+	GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3);
+	GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3, 0);
+
 	Serial_init(UART_DEBUG_MODULE, 9600);
 
 	Serial_puts(UART_DEBUG_MODULE, "Hello there!\r\n", 100);
@@ -269,8 +171,22 @@ int main(void)
 
 	Serial_puts(UART_DEBUG_MODULE, "Starting main control loop...\r\n", 100);
 
+	set_init_table();
+	set_register_variable("smaxb", VARTYPE_UINT, &servo_max_highband);
+	set_register_variable("sminb", VARTYPE_UINT, &servo_min_highband);
+	set_register_variable("sp", VARTYPE_FLOAT, &servopid.coefficients.p);
+	set_register_variable("si", VARTYPE_FLOAT, &servopid.coefficients.i);
+	set_register_variable("sd", VARTYPE_FLOAT, &servopid.coefficients.d);
+	set_register_variable("thresh", VARTYPE_FLOAT, &threshold_ratio);
+	set_register_variable("scont", VARTYPE_BOOL, &speed_control);
+	set_register_variable("smult", VARTYPE_FLOAT, &speed_multiplier);
+	set_register_variable("edgec", VARTYPE_UINT, &edgeclip_count);
+	set_register_variable("still", VARTYPE_BOOL, &be_still);
+	set_register_variable("minsp", VARTYPE_FLOAT, &min_speed);
 
-	PID_PIDController(&servopid, 0.1f, 0.0f, 0.01f, 2.0f);
+	set_register_variable("red", VARTYPE_BOOL, &red_led);
+	set_register_variable("green", VARTYPE_BOOL, &green_led);
+	set_register_variable("blue", VARTYPE_BOOL, &blue_led);
 
 	uint32_t loopdelay = SysCtlClockGet() / 100 / 3;
 
@@ -279,6 +195,9 @@ int main(void)
 	shell_registerProgram("set", set_main);
 	shell_registerProgram("drive", drive_main);
 	shell_registerProgram("k", kill_main);
+
+	motor_setSpeedi(0);
+	servo_setPosf(0.5f);
 
 	while (1)
 	{
@@ -291,6 +210,11 @@ int main(void)
 		// Compute the derivative of the linecam data
 		for (i = 1; i < CAMERA_SAMPLES; i++)
 		{
+			if(i < (edgeclip_count + 1) || i > (CAMERA_SAMPLES - edgeclip_count))
+			{
+				derivative_buffer[i - 1] = 0;
+				continue;
+			}
 			derivative_buffer[i - 1] = abs(
 					((int16_t) camera_buffer[i])
 							- ((int16_t) camera_buffer[i - 1]));
@@ -330,9 +254,59 @@ int main(void)
 		avgpos /= CAMERA_SAMPLES;
 
 		float servopos = PID_calculate(&servopid, avgpos, 0.5f, 0.01f);
-		servo_setPosf(0.5f - servopos);
+
+		GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3, (red_led ? GPIO_PIN_1 : 0) | (blue_led ? GPIO_PIN_2 : 0) | (green_led ? GPIO_PIN_3 : 0));
+
+#ifndef REMOTE_CONTROL
+		if (be_still)
+		{
+			servo_setPosf(0.5f);
+			motor_setSpeedi(0);
+		}
+		else
+		{
+			servo_setPosf(0.5f - servopos);
+
+			if (speed_control)
+			{
+				motor_setSpeedf(min_speed + (speed_multiplier / (servopos * servopos)));
+			}
+		}
+#endif
+
+#ifdef REMOTE_CONTROL
+
+		char cchar = ' ', lchar = ' ', llchar = ' ';
+
+		while((cchar = Serial_getc(UART_DEBUG_MODULE)) != '\n')
+		{
+			llchar = lchar;
+			lchar = cchar;
+		}
+
+		if (llchar == 'L')
+			servo_setPosf(0.0f);
+		else if (llchar == 'R')
+			servo_setPosf(1.0f);
+		else
+			servo_setPosf(0.5f);
+
+		if (lchar == 'U')
+			motor_setSpeedf(1.0f);
+		else if (lchar == 'D')
+			motor_brake();
+		else
+			motor_setSpeedf(0.0f);
+
+#else
+
+#ifndef DEBUG_B64_OUT
 
 		shell_poll();
+
+#endif
+
+#endif
 
 #ifdef DEBUG_B64_OUT
 		for (i = 0; i < 128; i++)
