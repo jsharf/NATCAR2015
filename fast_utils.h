@@ -35,6 +35,8 @@ unsigned long fast_sntoul(const char* str, size_t sz, unsigned int base, bool* s
 float fast_sntof(const char* str, size_t sz, unsigned int base, bool* succ);
 double fast_sntod(const char* str, size_t sz, unsigned int base, bool* succ);
 
+bool fast_sntob(const char* str, size_t sz, bool* succ);
+
 int fast_snfmtui(char* buf, size_t bufsiz, unsigned long i, unsigned long base);
 int fast_snfmti(char* buf, size_t bufsiz, long i, unsigned long base);
 

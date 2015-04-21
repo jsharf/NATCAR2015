@@ -330,6 +330,34 @@ double fast_sntod(const char* str, size_t sz, unsigned int base, bool* succ)
 	return ret;
 }
 
+bool fast_sntob(const char* str, size_t sz, bool* succ)
+{
+	if (sz < 4)
+	{
+		if (succ)
+			(*succ) = false;
+		return false;
+	}
+
+	if (fast_memcmp(str, "true", 4) == 0)
+	{
+		if (succ)
+			(*succ) = true;
+		return true;
+	}
+
+	if (fast_memcmp(str, "false", 5) == 0)
+	{
+		if (succ)
+			(*succ) = true;
+		return false;
+	}
+
+	if (succ)
+		(*succ) = false;
+	return false;
+}
+
 #define SNFTMTF_FPARTDIGITS (4)
 
 int fast_snfmtf(char* buf, size_t bufsiz, float f, unsigned long base)
